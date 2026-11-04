@@ -510,6 +510,38 @@ def do_blocks(models, ref, base2b, device, exact=False):
     yield from with_report([args])
 
 
+PROFILES_DIR = ROOT / "profiles"
+
+
+def profiles_summary():
+    files = list(PROFILES_DIR.glob("*.json")) if PROFILES_DIR.exists() else []
+    size = sum(f.stat().st_size for f in PROFILES_DIR.glob("*") if f.is_file()) if PROFILES_DIR.exists() else 0
+    mb = size / 1024 / 1024
+    return t(f"Профилей: **{len(files)}**, занято **{mb:.1f} МБ**. Папка: `{PROFILES_DIR}`",
+             f"Profiles: **{len(files)}**, using **{mb:.1f} MB**. Folder: `{PROFILES_DIR}`")
+
+
+def do_profiles_build(folder, rebuild):
+    folder = (folder or "").strip() or SET["models_dir"]
+    if not os.path.isdir(folder):
+        raise gr.Error(t(f"Нет такой папки: {folder}", f"No such folder: {folder}"))
+    yield from plain([["profile", "--models", folder] + (["--rebuild"] if rebuild else [])])
+
+
+def do_profiles_clear(ok):
+    if not ok:
+        raise gr.Error(t("Поставь галочку «Да, удалить все профили».", "Tick 'Yes, delete all profiles' first."))
+    n = 0
+    if PROFILES_DIR.exists():
+        for f in PROFILES_DIR.iterdir():
+            if f.is_file() and f.suffix in (".json", ".npz", ".part"):
+                f.unlink()
+                n += 1
+    gr.Info(t(f"Удалено файлов: {n}. Профили построятся заново при следующем анализе.",
+              f"Files deleted: {n}. Profiles will be rebuilt on the next analysis."))
+    return profiles_summary(), False
+
+
 def do_meta(files, sha):
     fs = models_list(files)
     if not fs:
@@ -946,6 +978,28 @@ def build():
                                                  "profiles/, и следующие анализы идут за секунды (погрешность 1–2%).",
                                                  "By default each model is scanned once and its profile is saved to "
                                                  "profiles/; later analyses take seconds (within 1–2%)."))
+                with gr.Accordion(t("Профили моделей", "Model profiles"), open=False):
+                    gr.Markdown(t("Профиль — небольшой «слепок» модели (около 7 МБ для 2.9B). Строится при первом анализе "
+                                  "модели, а дальше анализ читает только его. Можно построить заранее для всей папки, "
+                                  "например на ночь: потом любой анализ этих моделей займёт секунды. Изменённый файл "
+                                  "получит новый профиль сам, переименованный сохранит старый.",
+                                  "A profile is a small 'snapshot' of a model (about 7 MB for 2.9B). It is built on the "
+                                  "model's first analysis, and later analyses read only the profile. You can build them in "
+                                  "advance for a whole folder, e.g. overnight: then any analysis of those models takes "
+                                  "seconds. A changed file gets a new profile by itself; a renamed one keeps its profile."),
+                                elem_classes="small-note")
+                    a_pinfo = gr.Markdown(profiles_summary())
+                    with gr.Row():
+                        a_pdir = gr.Textbox(label=t("Папка с моделями", "Models folder"), value=SET["models_dir"], scale=3,
+                                            info=t("по умолчанию — папка моделей сверху", "defaults to the models folder above"))
+                        a_preb = gr.Checkbox(False, label=t("Пересобрать даже готовые", "Rebuild existing ones too"), scale=1)
+                    with gr.Row():
+                        a_pbuild = gr.Button(t("▶ Построить профили для папки", "▶ Build profiles for the folder"),
+                                             variant="primary")
+                        a_pref = gr.Button(t("Обновить сводку", "Refresh summary"), size="sm")
+                    with gr.Row():
+                        a_pok = gr.Checkbox(False, label=t("Да, удалить все профили", "Yes, delete all profiles"))
+                        a_pclr = gr.Button(t("Очистить профили", "Clear profiles"), variant="stop", size="sm")
                 with gr.Tabs():
                     with gr.Tab(t("Родитель", "Parent")):
                         gr.Markdown(t("От какой модели сделана цель. Пусто в кандидатах = все модели той же архитектуры в папке.",
@@ -1162,10 +1216,14 @@ def build():
                    ).then(lambda d: gr.update(choices=scan_files(d)), lora_dir, b_pick)
         v_go.click(do_convert, [v_files, v_folder, v_to, v_mins, v_out], LP
                    ).then(lambda d: gr.update(choices=scan_files(d)), lora_dir, b_pick)
-        p_go.click(do_parent, [pT, pC, pB, a_dev, a_exact], LR)
-        f_go.click(do_family, [fM, fR, a_dev, a_exact], LR)
-        g_go.click(do_genome, [gM, gB, a_dev, a_exact], LR)
-        k_go.click(do_blocks, [kM, kR, kS, a_dev, a_exact], LR)
+        models_dir.change(lambda d: d, models_dir, a_pdir)
+        a_pbuild.click(do_profiles_build, [a_pdir, a_preb], LP).then(profiles_summary, None, a_pinfo)
+        a_pref.click(profiles_summary, None, a_pinfo)
+        a_pclr.click(do_profiles_clear, a_pok, [a_pinfo, a_pok])
+        p_go.click(do_parent, [pT, pC, pB, a_dev, a_exact], LR).then(profiles_summary, None, a_pinfo)
+        f_go.click(do_family, [fM, fR, a_dev, a_exact], LR).then(profiles_summary, None, a_pinfo)
+        g_go.click(do_genome, [gM, gB, a_dev, a_exact], LR).then(profiles_summary, None, a_pinfo)
+        k_go.click(do_blocks, [kM, kR, kS, a_dev, a_exact], LR).then(profiles_summary, None, a_pinfo)
         r_go.click(do_meta, [rM, r_sha], LR)
         l_go.click(do_lora_info, [lF, lD, lS, lM, a_dev], LR)
         r_check.click(check_recipe, r_text, log)
