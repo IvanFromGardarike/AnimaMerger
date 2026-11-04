@@ -631,8 +631,18 @@ def find_in_dirs(val, dirs, ln, what):
             raise gr.Error(t(f"Строка {ln}: {what} {val} есть в нескольких подпапках {d}, укажи путь:\n{lst}",
                              f"Line {ln}: {what} {val} is in several subfolders of {d}, give the path:\n{lst}"))
     where = ", ".join(str(d) for d in dirs) or "—"
-    raise gr.Error(t(f"Строка {ln}: не найдено: {what} {val} в {where} (и подпапках)",
-                     f"Line {ln}: {what} {val} not found in {where} (and subfolders)"))
+    import difflib
+    allp = {}
+    for d in dirs:
+        for p in d.rglob("*.safetensors"):
+            allp.setdefault(p.stem.lower(), str(p.relative_to(d)))
+    key = Path(names[0]).stem.lower()
+    near = difflib.get_close_matches(key, list(allp), n=5, cutoff=0.4)
+    words = [w for w in re.split(r"[^a-z0-9]+", key) if len(w) > 2]
+    near += [k for k in sorted(allp) if k not in near and words and sum(w in k for w in words) >= max(1, len(words) - 1)][:8 - len(near)]
+    hint = ("\n" + t("Похожие:", "Similar:") + "\n" + "\n".join("  " + allp[k] for k in near)) if near else ""
+    raise gr.Error(t(f"Строка {ln}: не найдено: {what} {val} в {where} (и подпапках){hint}",
+                     f"Line {ln}: {what} {val} not found in {where} (and subfolders){hint}"))
 
 
 def parse_recipe(text, used=None):
