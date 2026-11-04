@@ -611,6 +611,30 @@ MODEL_KEYS = {"a", "b", "c", "model", "tuned", "base", "target", "ft", "ft_base"
 TOKEN_RE = re.compile(r'([A-Za-z_][\w-]*)=("([^"]*)"|\S+)')
 
 
+def find_in_dirs(val, dirs, ln, what):
+    """Model/LoRA from a recipe: path relative to a folder, otherwise found by file name in its subfolders."""
+    names = [val] if val.lower().endswith(".safetensors") else [val, val + ".safetensors"]
+    dirs = [Path(d).expanduser() for d in dirs if d and Path(d).expanduser().is_dir()]
+    for d in dirs:
+        for n in names:
+            if (d / n).is_file():
+                return str(d / n)
+    want = {Path(n).name.lower() for n in names}
+    sub = {Path(n).parent.as_posix().lower() for n in names}
+    for d in dirs:
+        hits = [p for p in d.rglob("*.safetensors") if p.name.lower() in want
+                and (sub == {"."} or any(("/" + p.relative_to(d).parent.as_posix().lower()).endswith("/" + x) for x in sub))]
+        if len(hits) == 1:
+            return str(hits[0])
+        if len(hits) > 1:
+            lst = "\n".join("  " + str(p.relative_to(d)) for p in sorted(hits, key=lambda p: str(p).lower()))
+            raise gr.Error(t(f"Строка {ln}: {what} {val} есть в нескольких подпапках {d}, укажи путь:\n{lst}",
+                             f"Line {ln}: {what} {val} is in several subfolders of {d}, give the path:\n{lst}"))
+    where = ", ".join(str(d) for d in dirs) or "—"
+    raise gr.Error(t(f"Строка {ln}: не найдено: {what} {val} в {where} (и подпапках)",
+                     f"Line {ln}: {what} {val} not found in {where} (and subfolders)"))
+
+
 def parse_recipe(text, used=None):
     steps, outputs = [], {}
     used = used if used is not None else set()
@@ -637,13 +661,7 @@ def parse_recipe(text, used=None):
                 used.add(ref)
                 val = outputs[ref]
             elif key in MODEL_KEYS and not Path(val).is_absolute():
-                cand = Path(SET["models_dir"]) / val
-                if not cand.exists() and not val.lower().endswith(".safetensors"):
-                    cand = Path(SET["models_dir"]) / (val + ".safetensors")
-                if not cand.exists():
-                    raise gr.Error(t(f"Строка {ln}: не найдена модель {val} в {SET['models_dir']}",
-                                     f"Line {ln}: model {val} not found in {SET['models_dir']}"))
-                val = str(cand)
+                val = find_in_dirs(val, [SET["models_dir"], out_dir()], ln, t("модель", "model"))
             elif key == "lora":
                 p, _, s = val.rpartition(":")
                 try:
@@ -654,13 +672,7 @@ def parse_recipe(text, used=None):
                     used.add(p[1:])
                     p = outputs.get(p[1:], p)
                 elif not Path(p).is_absolute():
-                    cand = Path(SET["lora_dir"]) / p
-                    if not cand.exists() and not p.lower().endswith(".safetensors"):
-                        cand = Path(SET["lora_dir"]) / (p + ".safetensors")
-                    if not cand.exists():
-                        raise gr.Error(t(f"Строка {ln}: не найдена LoRA {p} в {SET['lora_dir']}",
-                                         f"Line {ln}: LoRA {p} not found in {SET['lora_dir']}"))
-                    p = str(cand)
+                    p = find_in_dirs(p, [SET["lora_dir"]], ln, "LoRA")
                 val = f"{p}:{s}"
             if key == "preset":
                 has_preset = True

@@ -28,7 +28,7 @@ Set your models, LoRA and output folders at the top and press **Refresh lists**.
 | **Mix LoRAs** | Mix several LoRAs into one file without a model: `concat` (exact, rank = sum of ranks) or `svd` (compressed to a chosen rank, accuracy shown). Per-block rules, e.g. composition from one LoRA and line/texture from another. |
 | **LoRA converter 2B ↔ 2.9B** | Re-lays LoRA files onto the other architecture by the official expansion layout. The result is a normal LoRA usable in any UI. Batch: a whole folder at once, subfolders included (with an output folder, the subfolder layout is kept; earlier results next to their sources are skipped). |
 | **Analysis** | Read-only analyzers with HTML reports (below). |
-| **Recipe** | A chain of steps in text (`Flat = merge ...`, then `Final = bake model=$Flat ...`), optional cleanup of intermediate files. |
+| **Recipe** | A chain of steps in text (`Flat = merge ...`, then `Final = bake model=$Flat ...`), optional cleanup of intermediate files. Models are looked up by name in the models folder, its subfolders and the output folder (LoRAs in the LoRA folder and its subfolders); if a name occurs twice, give the subfolder: `sub/Model`. |
 | **Port 2B ↔ 2.9B** | Port a fine-tune's delta to the other architecture with a block map (`official` layout, computed from the weights, or a saved map). |
 | **Block map** | Build and save a 2B ↔ 2.9B block map; `compare` checks the computed map against the layout. |
 | **Model info** | Structure of a checkpoint: prefix, blocks, layer names. |
