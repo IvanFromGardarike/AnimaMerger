@@ -769,7 +769,8 @@ def switch_lang(v):
         if os.environ.get("ANIMA_RUNNER") == "1":
             os._exit(3)  # run.bat / run.sh restart the app on exit code 3
         env = dict(os.environ, ANIMA_NO_BROWSER="1")
-        subprocess.Popen([sys.executable] + sys.argv, cwd=str(ROOT), env=env)
+        flags = 0x01000000 if os.name == "nt" else 0  # CREATE_BREAKAWAY_FROM_JOB: the new app outlives this one
+        subprocess.Popen([sys.executable] + sys.argv, cwd=str(ROOT), env=env, creationflags=flags)
         os._exit(0)
 
     threading.Timer(0.8, restart).start()
@@ -1270,7 +1271,49 @@ def build():
     return ui
 
 
+def kill_children_with_app():
+    """Windows: put the app into a job object, so merge/analysis processes die when the app is closed
+    (closing the console window otherwise leaves them running and holding tens of GB of RAM)."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateJobObjectW.restype = wintypes.HANDLE
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+
+        class BASIC(ctypes.Structure):
+            _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                        ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                        ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                        ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                        ("SchedulingClass", wintypes.DWORD)]
+
+        class IO(ctypes.Structure):
+            _fields_ = [(n, ctypes.c_uint64) for n in ("r", "w", "o", "rb", "wb", "ob")]
+
+        class EXT(ctypes.Structure):
+            _fields_ = [("Basic", BASIC), ("Io", IO), ("ProcessMemoryLimit", ctypes.c_size_t),
+                        ("JobMemoryLimit", ctypes.c_size_t), ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                        ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+        job = k32.CreateJobObjectW(None, None)
+        if not job:
+            return
+        info = EXT()
+        info.Basic.LimitFlags = 0x2000 | 0x800  # KILL_ON_JOB_CLOSE | BREAKAWAY_OK (for the language restart)
+        if k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):
+            k32.AssignProcessToJobObject(job, k32.GetCurrentProcess())
+        globals()["_JOB"] = job  # keep the handle open for the app's lifetime
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
+    kill_children_with_app()
     port = int(os.environ.get("ANIMA_MERGER_PORT", "7887"))
     build().queue().launch(server_name="127.0.0.1", server_port=port,
                            **({"css": CSS, "theme": gr.themes.Soft()} if STYLE_AT_LAUNCH else {}),
