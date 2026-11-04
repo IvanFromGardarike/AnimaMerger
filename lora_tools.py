@@ -463,10 +463,17 @@ def convert_one(path, out_path, to_blocks, m_inserted):
 
 
 def cmd_lora_convert(args):
-    files = []
+    files, roots = [], {}
     for p in args.lora:
         if os.path.isdir(p):
-            files += sorted(str(x) for x in Path(p).glob("*.safetensors"))
+            for x in sorted(Path(p).rglob("*.safetensors"), key=lambda z: str(z).lower()):
+                mm = re.match(r"^(.+)_(2\.9B|2B)$", x.stem, re.I)
+                if mm and (x.parent / (mm.group(1) + ".safetensors")).exists():
+                    log(t(f"  пропуск {x.name}: похоже, это уже результат конвертации",
+                          f"  skipped {x.name}: looks like an earlier conversion result"))
+                    continue
+                files.append(str(x))
+                roots[str(x)] = Path(p)
         else:
             files.append(p)
     if not files:
@@ -481,7 +488,12 @@ def cmd_lora_convert(args):
         if args.out:
             op = args.out
         else:
-            folder = Path(args.out_dir) if args.out_dir else Path(p).parent
+            if args.out_dir:
+                # keep the subfolder layout of a scanned folder inside --out-dir
+                rel = Path(p).parent.relative_to(roots[p]) if p in roots else Path()
+                folder = Path(args.out_dir) / rel
+            else:
+                folder = Path(p).parent
             folder.mkdir(parents=True, exist_ok=True)
             suffix = args.suffix
             if not suffix:

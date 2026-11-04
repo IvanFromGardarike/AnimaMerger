@@ -191,12 +191,15 @@ def hl_legend():
 
 
 def resolve_models(args_models):
-    out = []
+    """Files as given; folders are searched recursively (subfolders included). Duplicates are dropped."""
+    out, seen = [], set()
     for p in args_models or []:
-        if os.path.isdir(p):
-            out += [str(x) for x in sorted(Path(p).glob("*.safetensors"))]
-        else:
-            out.append(p)
+        items = sorted((str(x) for x in Path(p).rglob("*.safetensors")), key=str.lower) if os.path.isdir(p) else [p]
+        for x in items:
+            key = os.path.normcase(os.path.abspath(x))
+            if key not in seen:
+                seen.add(key)
+                out.append(x)
     return out
 
 
