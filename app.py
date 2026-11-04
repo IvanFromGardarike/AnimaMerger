@@ -20,6 +20,15 @@ import gradio as gr
 from amutil import t, LANG, discover, guess_base, file_kind
 
 VERSION = "1.1"
+# Newer Gradio takes css/theme in launch() and warns when they are passed to Blocks(); older ones only accept Blocks().
+import warnings
+warnings.filterwarnings("ignore", message=r".*parameter in the Blocks constructor will be removed.*",
+                        category=DeprecationWarning)
+try:
+    import inspect as _inspect
+    STYLE_AT_LAUNCH = "css" in _inspect.signature(gr.Blocks.launch).parameters
+except Exception:
+    STYLE_AT_LAUNCH = False
 ROOT = Path(__file__).resolve().parent
 SCRIPT = ROOT / "anima_merger.py"
 MAP_DIR = ROOT / "maps"
@@ -746,7 +755,7 @@ def switch_lang(v):
 
 
 def build():
-    with gr.Blocks(title="Anima Merger", css=CSS, theme=gr.themes.Soft()) as ui:
+    with gr.Blocks(title="Anima Merger", **({} if STYLE_AT_LAUNCH else {"css": CSS, "theme": gr.themes.Soft()})) as ui:
         with gr.Row():
             gr.Markdown(f"## Anima Merger {VERSION} — " + t("мердж, LoRA, перенос 2B ↔ 2.9B, анализ",
                                                              "merging, LoRA, 2B ↔ 2.9B porting, analysis"))
@@ -1242,4 +1251,5 @@ def build():
 if __name__ == "__main__":
     port = int(os.environ.get("ANIMA_MERGER_PORT", "7887"))
     build().queue().launch(server_name="127.0.0.1", server_port=port,
+                           **({"css": CSS, "theme": gr.themes.Soft()} if STYLE_AT_LAUNCH else {}),
                            inbrowser=os.environ.get("ANIMA_NO_BROWSER") != "1")
