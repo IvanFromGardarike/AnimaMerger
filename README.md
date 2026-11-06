@@ -23,7 +23,7 @@ Set your models, LoRA and output folders at the top and press **Refresh lists**.
 | Tab | What for |
 |---|---|
 | **Merge / rebase** | `A + (B − C) × M` for models of the same architecture. Modes: `add`, `topk` (only the strongest changes), `dare`, `ortho` (without the part parallel to A's weights), `ortho_delta` (without what A already took from C: no double dose when B and A share a parent; `--proj` sets how much to remove), `normdir`. Several M values at once → one file per value. |
-| **Bake LoRA** | Bake one or more LoRA / LoHa / LoKr into a model. kohya, diffusion-pipe and ComfyUI formats. Per-block / per-layer multipliers, a limiter against over-baking, a strength grid. A 2B LoRA on a 2.9B model is mapped automatically. |
+| **Bake LoRA** | Bake one or more LoRA / LoHa / LoKr / DoRA into a model. kohya, diffusion-pipe and ComfyUI formats. Per-block / per-layer multipliers, a limiter against over-baking, a strength grid. A 2B LoRA on a 2.9B model is mapped automatically. |
 | **Extract LoRA** | A LoRA from the difference of two models (SVD) with an accuracy estimate. |
 | **Mix LoRAs** | Mix several LoRAs into one file without a model: `concat` (exact, rank = sum of ranks) or `svd` (compressed to a chosen rank, accuracy shown). Per-block rules, e.g. composition from one LoRA and line/texture from another. |
 | **LoRA converter 2B ↔ 2.9B** | Re-lays LoRA files onto the other architecture by the official expansion layout. The result is a normal LoRA usable in any UI. Batch: a whole folder at once, subfolders included (with an output folder, the subfolder layout is kept; earlier results next to their sources are skipped). |

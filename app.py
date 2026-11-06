@@ -866,10 +866,10 @@ def build():
 
             # ---------------- bake
             with gr.Tab(t("Вшить LoRA", "Bake LoRA")):
-                gr.Markdown(t("Вшивает одну или несколько LoRA / LoHa / LoKr в модель. Понимает форматы kohya, "
+                gr.Markdown(t("Вшивает одну или несколько LoRA / LoHa / LoKr / DoRA в модель. Понимает форматы kohya, "
                               "diffusion-pipe, ComfyUI. LoRA от 2B на модели 2.9B (и наоборот) раскладывается "
                               "по официальной схеме расширения.",
-                              "Bakes one or more LoRA / LoHa / LoKr into a model. Understands kohya, diffusion-pipe "
+                              "Bakes one or more LoRA / LoHa / LoKr / DoRA into a model. Understands kohya, diffusion-pipe "
                               "and ComfyUI formats. A 2B LoRA on a 2.9B model (and back) is mapped by the official "
                               "expansion layout."), elem_classes="small-note")
                 bM = model_dd(t("Модель", "Model"))

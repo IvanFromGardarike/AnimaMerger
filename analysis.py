@@ -991,7 +991,11 @@ def cmd_lora_info(args):
             if not g:
                 continue
             try:
-                d, kd = lora_delta(x["f"], g, None, dev)
+                base = None
+                if "dora" in g and tidx is not None:  # DoRA: exact only with the model
+                    mk = tidx.resolve(nm)
+                    base = model.get(mk) if mk else None
+                d, kd = lora_delta(x["f"], g, None, dev, base=base)
             except Exception:
                 continue
             if d is None:

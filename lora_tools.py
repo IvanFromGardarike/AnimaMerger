@@ -98,8 +98,23 @@ def group_lora(path):
     return f, groups, unknown, (f.metadata() or {})
 
 
-def lora_delta(f, g, shape=None, device="cpu"):
-    """Full weight delta from LoRA/LoHa/LoKr parts. Returns (delta, kind). shape=None: no reshape."""
+def dora_apply(base, d, dora_scale):
+    """DoRA: W' = dora_scale * (W + d) / ||W + d|| (same as ComfyUI). Returns W' - W."""
+    w = base.reshape(base.shape[0], -1).float()
+    wc = w + d.reshape(w.shape)
+    m = dora_scale.float().reshape(dora_scale.shape[0], -1)
+    if m.shape[0] == wc.shape[0]:   # magnitude per output row (ComfyUI norms the original weight here)
+        norm = w.norm(dim=1, keepdim=True)
+    else:                            # magnitude per input column (DoRA paper / LyCORIS default)
+        norm = wc.norm(dim=0, keepdim=True)
+        m = m.reshape(1, -1)
+    wn = wc * (m / (norm + torch.finfo(torch.float32).eps))
+    return (wn - w).reshape(d.shape)
+
+
+def lora_delta(f, g, shape=None, device="cpu", base=None):
+    """Full weight delta from LoRA/LoHa/LoKr/DoRA parts. Returns (delta, kind). shape=None: no reshape.
+    DoRA needs the model weight (base); without it the delta is approximate (kind "dora~")."""
     T = lambda r: f.get_tensor(g[r]).to(device).float()
     alpha = float(f.get_tensor(g["alpha"]).float()) if "alpha" in g else None
     rs = (lambda d: d.reshape(shape)) if shape is not None else (lambda d: d)
@@ -111,7 +126,12 @@ def lora_delta(f, g, shape=None, device="cpu"):
             raise ValueError("tucker (lora_mid) is not supported")
         d = up.reshape(up.shape[0], -1) @ down.reshape(rank, -1)
         scale = (alpha / rank) if alpha is not None else 1.0
-        return rs(d * scale), "lora"
+        d = d * scale
+        if "dora" in g:
+            if base is None:
+                return rs(d), "dora~"
+            return rs(dora_apply(base.to(device), d, T("dora"))), "dora"
+        return rs(d), "lora"
 
     if "h1a" in g:
         if "ht1" in g:
@@ -228,7 +248,7 @@ def cmd_bake(args):
             for k, coef in targets:
                 shape = M.shape(k)
                 try:
-                    d, kind = lora_delta(f, g, shape)
+                    d, kind = lora_delta(f, g, shape, base=(M.get(k) if "dora" in g else None))
                 except Exception as e:
                     bad += 1
                     log(t(f"  пропуск {name}: {e}", f"  skipped {name}: {e}"))
@@ -567,6 +587,11 @@ def cmd_lora_merge(args):
         groups = {n: g for n, g in groups.items() if not any(n.lower().startswith(p) for p in TE_PREFIXES)}
         nb = lora_block_count(groups)
         kinds = {("lora" if ("up" in g and "down" in g and "mid" not in g) else "other") for g in groups.values()}
+        if any("dora" in g for g in groups.values()):
+            raise SystemExit(t(f"{Path(path).name} — это DoRA: её правка зависит от весов модели, смешать её с другими "
+                               f"LoRA без модели нельзя. Вшей её в модель вкладкой «Вшить LoRA».",
+                               f"{Path(path).name} is a DoRA: its change depends on the model weights, so it can't be "
+                               f"mixed with other LoRAs without a model. Bake it into a model with the 'Bake LoRA' tab."))
         log(t(f"[LoRA] {path}  сила {st:g}  модулей: {len(groups)}  блоков: {nb}",
               f"[LoRA] {path}  strength {st:g}  modules: {len(groups)}  blocks: {nb}"))
         srcs.append({"path": path, "f": f, "groups": groups, "st": st, "nb": nb, "kinds": kinds, "meta": md,
